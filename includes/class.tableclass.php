@@ -4,7 +4,6 @@
 *
 *   This class provides methods to construct and write a class file.
 */
-require_once(dirname(__FILE__) . '/class.code.php');
 
 class tableClass {
 	public $classname;          // Name of our class.
@@ -21,13 +20,13 @@ class tableClass {
     private $output;            // Text to write to file.
     public $filesrequired;      // Any files required. (default: class.database.php)
 
-	public function __construct($sName = "newclass", $sDatabase = "", $sTable = "", $sPrimaryKey = "", $sServerAddress = "localhost", $sServerUsername = "root", $sServerPassword = "") {
+	public function __construct($sName = "newclass", $sDatabase = "", $sTable = "", $sPrimaryKey = "", $sServerAddress = "localhost", $sServerUsername = "root", $sServerPassword = "",$vars=array()) {
 		// Construction of class
         $this->classname = $sName;
-        $this->variables = Array();
+        $this->variables = $vars;
         $this->filedate = date("l, M j, Y - G:i:s T");
-        $this->filesrequired = array("class.database.php");                     // Add any other required files here.
-        $this->filename = "class.$this->classname.php";
+        $this->filesrequired = null; //array("class.database.php");                     // Add any other required files here.
+        $this->filename = "$this->classname.class.php";
         $this->filepath = realpath(dirname(__FILE__) . "/../output/") . "/$this->filename";
         $this->databasename = $sDatabase;
         $this->serveraddress = $sServerAddress;
@@ -37,14 +36,7 @@ class tableClass {
         $this->primarykey = $sPrimaryKey;
 	}
 
-    private function formatCode($sCode) {
-        // Returns formatted code string.
-        $oCode = new codeObject($sCode, FALSE);
-        $oCode->process();
-        return($oCode->code);
-    }
-
-    public function setFile($sPath = "", $sFilename = "") {
+     public function setFile($sPath = "", $sFilename = "") {
         // Sets the path and/or the filename to use for the class.
         if($sPath != "") {
             $this->filepath = $sPath;
@@ -84,12 +76,12 @@ class tableClass {
 * File Name:        $this->filename
 * Generated:        $this->filedate
 *  - for Table:     $this->tablename
-*   - in Database:  $this->databasename
-* Created by: table2class (http://www.stevenflesch.com/projects/table2class/)
+*  - in Database:   $this->databasename
+* Created by: 
 ********************************************************************************/\n\n";
         $sRet .= $this->getRequired();
         $sRet .= "// Begin Class \"$this->classname\"\n";
-        $sRet .= "class $this->classname {\n";
+        $sRet .= "class $this->classname extends modObject\n{\n";
 
         return($sRet);
     }
@@ -105,16 +97,16 @@ class tableClass {
     public function getVariables() {
         // public function to return text to declare all the variables in the class.
         $sRet =     "// Variable declaration\n";
-        $sRet .=    "public \$$this->primarykey; // Primary Key\n";
+        $sRet .=    "protected \$$this->primarykey; // Primary Key\n";
         foreach($this->variables as $variable) {
             // Loop through variables and declare them.
             if($variable != $this->primarykey) {
                 // Variable is not primary key, so we'll add it.
-                $sRet .= "public \$$variable;\n";
+                $sRet .= "protected \$$variable;\n";
             }
         }
         // Add variable for connection to database.
-        $sRet .= "public \$database;\n\n";
+        //$sRet .= "protected \$database;\n\n";
 
         return($sRet);
     }
@@ -122,9 +114,14 @@ class tableClass {
     public function getConstructorDestructor() {
         // public function to create the class constructor and destructor.
         $sRet  = "// Class Constructor\npublic function __construct() {\n";
-        $sRet .= "\$this->database = new Database();\n\$this->database->SetSettings(\"$this->serveraddress\", \"$this->serverusername\", \"$this->serverpassword\", \"$this->databasename\");\n}\n\n";
+        //$sRet .= "\$this->database = new Database();\n\$this->database->SetSettings(\"$this->serveraddress\", \"$this->serverusername\", \"$this->serverpassword\", \"$this->databasename\");\n}\n\n";
+        
+        /*$sRet .= "\$this->database = sm_Database::getInstance();\n\n}\n\n";
         $sRet .=  "// Class Destructor\npublic function __destruct() {\n";
-        $sRet .= "unset(\$this->database);\n}\n\n";
+        $sRet .= "unset(\$this->database);\n}\n\n";*/
+        $sRet .= "parent::__construct();\n}\n\n";
+        $sRet .=  "// Class Destructor\npublic function __destruct() {\n";
+        $sRet .= "parent::__destruct();\n}\n\n";
 
         return($sRet);
     }
@@ -174,13 +171,17 @@ class tableClass {
     public function getSelect() {
         $sRet  = "public function select(\$mID) { // SELECT Function\n// Execute SQL Query to get record.\n";
         $sRet .= "\$sSQL =  \"SELECT * FROM $this->tablename WHERE $this->primarykey = \$mID;\";\n";
-        $sRet .= "\$oResult =  \$this->database->query(\$sSQL);\n\$oResult = \$this->database->result;\n\$oRow = mysql_fetch_object(\$oResult);\n\n";
+        $sRet .= "\$oResult =  \$this->database->query(\$sSQL);\n";
+        $sRet .= "\$oRow=null;\nif(\$oResult) {\n\$oRow = (object)\$oResult[0];\n}\nelse {\n\$err=\$this->database->getError();\nif(\$err!=\"\"){\ntrigger_error(\$err);\n}\nreturn false;\n}\n";
+        //$oResult = \$this->database->result;\n\$oRow = mysql_fetch_object(\$oResult);\n\n";
         $sRet .= "// Assign results to class.\n";
         $sRet .= "\$this->$this->primarykey = \$oRow->$this->primarykey; // Primary Key\n";
         // Loop through variables.
         foreach($this->variables as $variable) {
-            $sRet .= "\$this->$variable = \$oRow->$variable;\n";
+        	if($variable!=$this->primarykey)
+           		 $sRet .= "\$this->$variable = \$oRow->$variable;\n";
         }
+        $sRet .="return true;\n";
         $sRet .= "}\n\n";
 
         return($sRet);
@@ -189,44 +190,92 @@ class tableClass {
     public function getInsert() {
         $sRet  = "public function insert() {\n";
         $sRet .= "\$this->$this->primarykey = NULL; // Remove primary key value for insert\n";
-        $sRet .= "\$sSQL = \"INSERT INTO $this->tablename (";
-        $i = "";
-        foreach($this->variables as $variable) {
-            $sRet .= "$i$variable";
-            $i = ", ";
-        }
-        $i = "";
-        $sRet .= ") VALUES (";
-        foreach($this->variables as $variable) {
-            $sRet .= "$i'\$this->$variable'";
-            $i = ", ";
-        }
-        $sRet .= ");\";\n";
-        $sRet .= "\$oResult = \$this->database->query(\$sSQL);\n";
-        $sRet .= "\$this->$this->primarykey = \$this->database->lastinsertid;\n}\n\n";
-
+        $sRet .= "\$sSQLData = \$this->toArray();\n";
+        $sRet .= "unset(\$sSQLData['$this->primarykey']);\n";
+        $sRet .= "\$oResult = \$this->database->save('$this->tablename',\$sSQLData);\n";
+        $sRet .= "\$this->$this->primarykey = \$this->database->getLastInsertedId();\n";
+        $sRet .= "return \$this->$this->primarykey != NULL;\n}\n\n";
         return($sRet);
+    }
+    
+    public function getInsert_long() {
+    	$sRet  = "public function insert() {\n";
+    	$sRet .= "\$this->$this->primarykey = NULL; // Remove primary key value for insert\n";
+    	$sRet .= "\$sSQL = \"INSERT INTO $this->tablename (";
+    	$i = "";
+    	foreach($this->variables as $variable) {
+    		if($variable!=$this->primarykey)
+    		{
+    			$sRet .= "$i`$variable`";
+    			$i = ", ";
+    		}
+    
+    	}
+    	$i = "";
+    	$sRet .= ") VALUES (";
+    	foreach($this->variables as $variable) {
+    		if($variable!=$this->primarykey)
+    		{
+    			$sRet .= "$i'\$this->$variable'";
+    			$i = ", ";
+    		}
+    	}
+    	$sRet .= ");\";\n";
+    	$sRet .= "\$oResult = \$this->database->query(\$sSQL);\n";
+    	$sRet .= "\$this->$this->primarykey = \$this->database->getLastInsertedId();\n";
+    	$sRet .= "return \$this->$this->primarykey != NULL;\n}\n\n";
+    	return($sRet);
     }
 
     public function getUpdate() {
         $sRet  = "function update(\$mID) {\n";
-        $sRet .= "\$sSQL = \"UPDATE $this->tablename SET ($this->primarykey = '\$this->$this->primarykey'";
-        // Loop through variables.
-        foreach($this->variables as $variable) {
-            //$sRet .= ", $variable = '\" . mysql_real_escape_string(\$this->$variable, \$this->database->link) . \"'";
-            $sRet .= ", $variable = '\$this->$variable'";
-        }
-        $sRet .= ") WHERE $this->primarykey = \$mID;\";\n";
-        $sRet .= "\$oResult = \$this->database->Query(\$sSQL);\n}\n\n";
-
+        $sRet .= "\$oResult = NULL;\n";
+        $sRet .= "\$sSQLData = \$this->toArray();\n";
+        $sRet .= "unset(\$sSQLData['$this->primarykey']);\n";
+        $sRet .= "\$where['$this->primarykey']=\$this->$this->primarykey;\n";
+        $sRet .= "\$oResult = \$this->database->save('$this->tablename',\$sSQLData,\$where);\n";
+        $sRet .= "return \$oResult != NULL;\n}\n\n";
         return($sRet);
+    }
+    
+    public function getUpdate_long() {
+    	$sRet  = "function update(\$mID) {\n";
+    	$sRet .= "\$oResult = NULL;\n";
+    	$sRet .= "\$sSQL = \"UPDATE $this->tablename SET ($this->primarykey = '\$this->$this->primarykey'";
+    	// Loop through variables.
+    	foreach($this->variables as $variable) {
+    		//$sRet .= ", $variable = '\" . mysql_real_escape_string(\$this->$variable, \$this->database->link) . \"'";
+    		if($variable!=$this->primarykey)
+    			$sRet .= ", `$variable` = '\$this->$variable'";
+    	}
+    	$sRet .= ") WHERE $this->primarykey = \$mID;\";\n";
+    	$sRet .= "\$oResult = \$this->database->query(\$sSQL);\n";
+    	$sRet .= "return \$oResult != NULL;\n}\n\n";
+    	return($sRet);
     }
 
     public function getDelete() {
         // Creates the delete function.
-        $sRet = "public function delete(\$mID) {\n\$sSQL = \"DELETE FROM $this->tablename WHERE $this->primarykey = \$mID;\";\n\$oResult = \$this->database->Query(\$sSQL);\n}\n\n";
+    	
+        $sRet = "public static function delete(\$mID) {\n";
+        $sRet .= "\$oResult = NULL;\n";
+        $sRet .= "\$where['$this->primarykey']=\$mID;\n";
+        $sRet .= "\$oResult = \$this->database->delete('$this->tablename',\$where);\n";
+       	$sRet .= "return \$oResult != NULL;\n}\n\n";
 
         return($sRet);
+    }
+    
+    public function getDelete_long() {
+    	// Creates the delete function.
+    	 
+    	$sRet = "public function delete(\$mID) {\n";
+    	$sRet .= "\$oResult = NULL;\n";
+    	$sRet .= "\$sSQL = \"DELETE FROM $this->tablename WHERE $this->primarykey = \$mID;\";\n";
+    	$sRet .= "\$oResult = \$this->database->query(\$sSQL);\n";
+    	$sRet .= "return \$oResult != NULL;\n}\n\n";
+    
+    	return($sRet);
     }
 
     public function createClass($bEcho = 0, $bWrite = 1) {
@@ -238,8 +287,8 @@ class tableClass {
                     $this->getSetters() .       $this->getSelect() .
                     $this->getInsert() .        $this->getUpdate() .
                     $this->getDelete() .        $this->getFooter();
-        // Format the code.
-        $sFile = $this->formatCode($sFile);
+     
+     
 
         // If we are to display the file contents to the browser, we do so here.
         if($bEcho) {
